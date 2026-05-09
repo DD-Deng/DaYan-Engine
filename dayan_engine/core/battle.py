@@ -38,6 +38,227 @@ _STAGE_MONTH_ELEMENTS = {
 }
 
 
+def _hex_to_agent_context(hexagram: Hexagram, stage_result) -> dict:
+    """将卦象和阶段结果转为 agent 可读的上下文."""
+    return {
+        "hex_name": hexagram.name,
+        "yongshen": stage_result.yongshen_status,
+        "moving_line": f"第{stage_result.moving_line}爻动",
+        "wuxing_relation": f"上卦{hexagram.upper.element}·下卦{hexagram.lower.element}",
+    }
+
+
+def _call_agents_pre_battle(
+    config: BattleConfig, main_hex: Hexagram, main_moving: int
+) -> dict:
+    """战前 agent 策略调用."""
+    outputs: dict = {"pre_battle": {}}
+    hex_ctx = {
+        "hex_name": main_hex.name,
+        "yongshen": f"总卦{main_hex.name}, 动在{main_moving}爻",
+        "moving_line": f"第{main_moving}爻",
+        "wuxing_relation": f"上{main_hex.upper.element}下{main_hex.lower.element}",
+    }
+    pre_context = {"stage": "开战前", "advantage": "unknown"}
+
+    if config.attacker_agent:
+        try:
+            outputs["pre_battle"]["attacker_strategy"] = (
+                config.attacker_agent.get_strategy(pre_context, hex_ctx)
+            )
+        except Exception:
+            pass
+    if config.defender_agent:
+        try:
+            outputs["pre_battle"]["defender_strategy"] = (
+                config.defender_agent.get_strategy(
+                    {"stage": "开战前", "advantage": "defender"}, hex_ctx
+                )
+            )
+        except Exception:
+            pass
+    if config.ally_agent:
+        try:
+            outputs["pre_battle"]["ally_strategy"] = (
+                config.ally_agent.get_strategy(
+                    {"stage": "开战前", "advantage": "defender"}, hex_ctx
+                )
+            )
+        except Exception:
+            pass
+    return outputs
+
+
+def _call_agents_per_stage(
+    config: BattleConfig,
+    sub_hex: Hexagram,
+    stage_result,
+    stage_name: str,
+    outputs: dict,
+) -> None:
+    """阶段内 agent 策略 + 反应调用."""
+    key = stage_name
+    outputs[key] = {}
+    hex_ctx = _hex_to_agent_context(sub_hex, stage_result)
+    ctx = {
+        "stage": stage_name,
+        "advantage": stage_result.advantage,
+        "yongshen_status": stage_result.yongshen_status,
+        "turning_point": stage_result.turning_point,
+    }
+
+    if config.attacker_agent:
+        try:
+            outputs[key]["attacker_strategy"] = (
+                config.attacker_agent.get_strategy(ctx, hex_ctx)
+            )
+        except Exception:
+            pass
+        try:
+            atk_event = _build_stage_event(config, stage_result, stage_name)
+            outputs[key]["attacker_reaction"] = (
+                config.attacker_agent.react_to_event(atk_event, hex_ctx)
+            )
+        except Exception:
+            pass
+
+    if config.defender_agent:
+        try:
+            outputs[key]["defender_strategy"] = (
+                config.defender_agent.get_strategy(ctx, hex_ctx)
+            )
+        except Exception:
+            pass
+        try:
+            def_event = _build_stage_event(config, stage_result, stage_name)
+            outputs[key]["defender_reaction"] = (
+                config.defender_agent.react_to_event(def_event, hex_ctx)
+            )
+        except Exception:
+            pass
+
+
+def _build_stage_event(
+    config: BattleConfig, stage_result, stage_name: str
+) -> dict[str, str]:
+    """构建阶段事件描述."""
+    if stage_result.advantage == "attacker":
+        desc = (
+            f"我军在{stage_name}阶段占据上风, "
+            f"敌伤亡{stage_result.casualties_defender:.0%}, "
+            f"补给{stage_result.supply_loss}损。{stage_result.turning_point}"
+        )
+    elif stage_result.advantage == "defender":
+        desc = (
+            f"我军在{stage_name}阶段受挫, "
+            f"伤亡{stage_result.casualties_attacker:.0%}, "
+            f"补给{stage_result.supply_loss}损。{stage_result.turning_point}"
+        )
+    else:
+        desc = (
+            f"我军在{stage_name}阶段与敌相持, "
+            f"各伤亡{stage_result.casualties_attacker:.0%}和"
+            f"{stage_result.casualties_defender:.0%}。{stage_result.turning_point}"
+        )
+    return {"type": "阶段战果", "desc": desc}
+
+
+def _call_agents_post_battle(
+    config: BattleConfig,
+    main_hex: Hexagram,
+    changed_hex: Hexagram,
+    stage_results: list,
+    winner: str,
+    total_atk_cas: float,
+    total_def_cas: float,
+    outputs: dict,
+) -> None:
+    """战后 agent 反思调用."""
+    outputs["reflection"] = {}
+    stages_text = "; ".join(
+        f"{s.stage_name}:卦{s.hexagram.name}动{s.moving_line}爻"
+        for s in stage_results
+    )
+
+    if config.attacker_agent:
+        try:
+            atk_report = {
+                "winner": "攻方" if winner == "attacker" else ("守方" if winner == "defender" else "平局"),
+                "my_casualties": f"{total_atk_cas:.0%}",
+                "enemy_casualties": f"{total_def_cas:.0%}",
+                "main_hex": f"{main_hex.name}→{changed_hex.name}",
+                "stages_summary": stages_text,
+            }
+            outputs["reflection"]["attacker_reflection"] = (
+                config.attacker_agent.reflect(atk_report)
+            )
+        except Exception:
+            pass
+
+    if config.defender_agent:
+        try:
+            def_report = {
+                "winner": "攻方" if winner == "attacker" else ("守方" if winner == "defender" else "平局"),
+                "my_casualties": f"{total_def_cas:.0%}",
+                "enemy_casualties": f"{total_atk_cas:.0%}",
+                "main_hex": f"{main_hex.name}→{changed_hex.name}",
+                "stages_summary": stages_text,
+            }
+            outputs["reflection"]["defender_reflection"] = (
+                config.defender_agent.reflect(def_report)
+            )
+        except Exception:
+            pass
+
+
+def _run_stages_qimen(
+    config: BattleConfig, main_hex: Hexagram
+) -> list[StageResult]:
+    """使用奇门遁甲方法推演五个阶段."""
+    from dayan_engine.core.qimen import arrange_qimen_plate, qimen_stage_judgment
+
+    # 从 cast_nums 和 config 推算"战役时间"
+    n1, n2, n3 = config.cast_nums
+    year = 200 + n1
+    month = max(1, min(12, n2 % 12 or 12))
+    day = max(1, min(28, n3 % 28 or 1))
+    hour = (n1 + n2 + n3) % 24
+
+    plate = arrange_qimen_plate(year, month, day, hour)
+
+    attacker_elem = "金" if config.attacker_traits.get("主帅", 0) > 0.7 else "火"
+    defender_elem = "水" if config.defender_traits.get("主师", 0) > 0.7 else "土"
+
+    stage_results: list[StageResult] = []
+    prev_atk = 0.5
+    prev_def = 0.5
+
+    for stage_name in _BATTLE_STAGES:
+        judgment = qimen_stage_judgment(
+            plate, stage_name, attacker_elem, defender_elem,
+            prev_atk, prev_def,
+        )
+        prev_atk = judgment.get("atk_score", 0.5)
+        prev_def = judgment.get("def_score", 0.5)
+
+        sr = StageResult(
+            stage_name=stage_name,
+            hexagram=main_hex,
+            moving_line=0,
+            yongshen_status=(
+                f"奇门遁甲·{plate.dun_type}{plate.ju_number}局·{plate.yuan}·{plate.solar_term}"
+            ),
+            advantage=judgment["advantage"],
+            casualties_attacker=judgment["casualties_attacker"],
+            casualties_defender=judgment["casualties_defender"],
+            supply_loss=judgment["supply_loss"],
+            turning_point=judgment["turning_point"],
+        )
+        stage_results.append(sr)
+
+    return stage_results
+
+
 def _derive_sub_hexagram(
     main_hexagram: Hexagram,
     stage_index: int,
@@ -201,12 +422,17 @@ def _aggregate_results(
     return winner, round(total_atk_cas, 3), round(total_def_cas, 3)
 
 
-def run_battle(battle_config: BattleConfig, seed: int | None = None) -> BattleResult:
+def run_battle(
+    battle_config: BattleConfig,
+    seed: int | None = None,
+    method: str = "liuyao",
+) -> BattleResult:
     """运行完整战役推演.
 
     Args:
         battle_config: 战役配置
         seed: 随机种子 (可选, 用于可复现推演)
+        method: 判定方法 — "liuyao" (六爻纳甲) 或 "qimen" (奇门遁甲)
 
     Returns:
         BattleResult 包含所有阶段结果、战果和战报
@@ -220,23 +446,44 @@ def run_battle(battle_config: BattleConfig, seed: int | None = None) -> BattleRe
 
     # 2. 总卦纳甲完整
     main_hex = build_hexagram(main_hex.upper.index, main_hex.lower.index)
-    changed_hex = apply_moving_line(main_hex, main_moving)  # 标记动爻 + 返回变卦
+    changed_hex = apply_moving_line(main_hex, main_moving)
 
-    # 3. 分阶段推演
+    # 3. 预战阶段 — agent 策略
+    agent_outputs: dict = {}
+    if battle_config.attacker_agent or battle_config.defender_agent:
+        agent_outputs = _call_agents_pre_battle(battle_config, main_hex, main_moving)
+
+    # 4. 分阶段推演
     stage_results: list[StageResult] = []
-    for i, stage_name in enumerate(_BATTLE_STAGES):
-        sub_hex, sub_moving = _derive_sub_hexagram(
-            main_hex, i, stage_results, battle_config
-        )
-        stage_result = _judge_stage(
-            sub_hex, sub_moving, stage_name, battle_config, stage_results
-        )
-        stage_results.append(stage_result)
+    if method == "qimen":
+        stage_results = _run_stages_qimen(battle_config, main_hex)
+    else:
+        for i, stage_name in enumerate(_BATTLE_STAGES):
+            sub_hex, sub_moving = _derive_sub_hexagram(
+                main_hex, i, stage_results, battle_config
+            )
+            stage_result = _judge_stage(
+                sub_hex, sub_moving, stage_name, battle_config, stage_results
+            )
+            stage_results.append(stage_result)
 
-    # 4. 聚合战果
+            # 阶段内 agent 调用
+            if battle_config.attacker_agent or battle_config.defender_agent:
+                _call_agents_per_stage(
+                    battle_config, sub_hex, stage_result, stage_name, agent_outputs
+                )
+
+    # 5. 聚合战果
     winner, total_atk_cas, total_def_cas = _aggregate_results(
         main_hex, changed_hex, stage_results, battle_config
     )
+
+    # 6. 战后 agent 反思
+    if battle_config.attacker_agent or battle_config.defender_agent:
+        _call_agents_post_battle(
+            battle_config, main_hex, changed_hex, stage_results, winner,
+            total_atk_cas, total_def_cas, agent_outputs,
+        )
 
     result = BattleResult(
         config=battle_config,
@@ -246,6 +493,7 @@ def run_battle(battle_config: BattleConfig, seed: int | None = None) -> BattleRe
         winner=winner,
         total_casualties_attacker=total_atk_cas,
         total_casualties_defender=total_def_cas,
+        agent_outputs=agent_outputs,
     )
 
     return result

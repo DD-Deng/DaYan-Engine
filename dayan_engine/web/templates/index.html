@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大衍引擎 · 战役推演</title>
+<style>
+:root {
+  --gold: #b8860b;
+  --red: #8b0000;
+  --dark: #1a1a2e;
+  --paper: #f5f0e8;
+  --ink: #2c1810;
+  --card-bg: #fffef9;
+  --border: #c4a97d;
+  --atk: #c0392b;
+  --def: #2980b9;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:"Noto Serif SC","SimSun","STSong",serif; background:var(--paper); color:var(--ink); line-height:1.7; }
+.header { background:linear-gradient(135deg,var(--dark),#2d1b3d); color:var(--gold); text-align:center; padding:1.5rem 1rem; border-bottom:3px solid var(--gold); }
+.header h1 { font-size:2rem; letter-spacing:0.25em; }
+.header p { opacity:0.7; margin-top:0.3rem; }
+.container { max-width:1100px; margin:0 auto; padding:1rem; display:grid; grid-template-columns:380px 1fr; gap:1.5rem; }
+@media (max-width:800px) { .container { grid-template-columns:1fr; } }
+.card { background:var(--card-bg); border:1px solid var(--border); border-radius:6px; padding:1.2rem; margin-bottom:1rem; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+.card h2 { font-size:1.15rem; border-bottom:2px solid var(--gold); padding-bottom:0.4rem; margin-bottom:0.8rem; color:var(--red); }
+.form-group { margin-bottom:0.7rem; }
+.form-group label { display:block; font-size:0.85rem; font-weight:700; margin-bottom:0.15rem; color:#555; }
+.form-group input,.form-group select { width:100%; padding:0.4rem 0.5rem; border:1px solid #ccc; border-radius:4px; font-size:0.9rem; font-family:inherit; }
+.trait-row { display:grid; grid-template-columns:60px 1fr 40px; gap:0.4rem; align-items:center; }
+.trait-row label { font-size:0.8rem; }
+.trait-row input[type=range] { width:100%; }
+.trait-row span { font-size:0.8rem; text-align:right; font-weight:700; }
+button { display:block; width:100%; padding:0.6rem; background:var(--red); color:#fff; border:none; border-radius:4px; font-size:1rem; font-family:inherit; cursor:pointer; letter-spacing:0.15em; margin-top:0.8rem; }
+button:hover { opacity:0.9; }
+button:disabled { opacity:0.4; cursor:not-allowed; }
+.stage-card { border-left:4px solid var(--border); padding:0.6rem 0.8rem; margin-bottom:0.7rem; background:#fdfcf7; }
+.stage-card.atk { border-left-color:var(--atk); }
+.stage-card.def { border-left-color:var(--def); }
+.stage-card .stage-header { display:flex; justify-content:space-between; align-items:center; font-weight:700; }
+.stage-card .stage-hex { font-size:0.85rem; color:#888; }
+.casualty-bar { height:8px; background:#eee; border-radius:4px; margin:0.3rem 0; overflow:hidden; }
+.casualty-bar .fill-atk { height:100%; background:var(--atk); float:left; }
+.casualty-bar .fill-def { height:100%; background:var(--def); float:right; }
+.result-banner { text-align:center; padding:1rem; font-size:1.3rem; font-weight:700; letter-spacing:0.15em; border:2px solid var(--gold); margin-bottom:1rem; }
+.result-banner.atk { color:var(--atk); }
+.result-banner.def { color:var(--def); }
+.narrative { font-size:0.9rem; white-space:pre-wrap; font-family:inherit; line-height:1.8; }
+.hex-line { font-size:1.4rem; letter-spacing:0.2em; text-align:center; font-family:monospace; }
+.hex-grid { display:grid; grid-template-columns:repeat(8,1fr); gap:4px; margin-top:0.5rem; }
+.hex-cell { text-align:center; padding:3px; font-size:0.65rem; border:1px solid #eee; border-radius:3px; cursor:pointer; background:#fff; }
+.hex-cell:hover { background:var(--gold); color:#fff; }
+.hex-detail { margin-top:0.5rem; background:#faf7f0; padding:0.6rem; border-radius:4px; font-size:0.8rem; }
+.section-divider { border:0; border-top:1px dashed var(--border); margin:1rem 0; }
+.winner-badge { display:inline-block; padding:0.2rem 0.6rem; border-radius:3px; font-size:1rem; }
+.winner-badge.atk { background:#fce4e4; color:var(--atk); }
+.winner-badge.def { background:#e4f0fc; color:var(--def); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>大衍引擎</h1>
+  <p>DaYan Engine · 基于《周易》的战役推演</p>
+</div>
+
+<div class="container">
+
+<!-- 左侧: 配置面板 -->
+<div id="config-panel">
+<div class="card">
+<h2>⚔ 战役配置</h2>
+
+<div class="form-group">
+  <label>攻方将领</label>
+  <input type="text" id="attacker_name" value="曹操">
+</div>
+<div id="attacker_traits"></div>
+
+<hr class="section-divider">
+
+<div class="form-group">
+  <label>守方将领</label>
+  <input type="text" id="defender_name" value="孙权">
+</div>
+<div id="defender_traits"></div>
+
+<hr class="section-divider">
+
+<div class="form-group">
+  <label>时间</label>
+  <input type="text" id="time_desc" value="建安十三年冬">
+</div>
+<div class="form-group">
+  <label>地点</label>
+  <input type="text" id="location" value="赤壁">
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.4rem;">
+  <div class="form-group"><label>起卦数1</label><input type="number" id="cast1" value="9" min="1"></div>
+  <div class="form-group"><label>起卦数2</label><input type="number" id="cast2" value="6" min="1"></div>
+  <div class="form-group"><label>起卦数3</label><input type="number" id="cast3" value="13" min="1"></div>
+</div>
+<div class="form-group">
+  <label>随机种子 (可选)</label>
+  <input type="number" id="seed" placeholder="留空则随机">
+</div>
+
+<button onclick="runBattle()">起卦 · 开战</button>
+<div id="status" style="text-align:center;margin-top:0.5rem;font-size:0.85rem;color:#888;"></div>
+</div>
+
+<!-- 卦象参考 -->
+<div class="card">
+<h2>☰ 六十四卦参考</h2>
+<div class="hex-grid" id="hex-grid"></div>
+<div class="hex-detail" id="hex-detail" style="display:none;"></div>
+</div>
+</div>
+
+<!-- 右侧: 结果展示 -->
+<div id="result-panel">
+<div class="card">
+<h2>📜 战报输出</h2>
+<div id="result-content" style="color:#999;font-style:italic;">
+  配置战役后点击「起卦·开战」, 战报将在此展示。
+</div>
+</div>
+</div>
+
+</div>
+
+<script>
+const TRAIT_NAMES = ["主帅","军师","先锋","后勤","军资","联盟"];
+const TRAIT_DEFAULTS = {
+  attacker: {主帅:0.90,军师:0.85,先锋:0.70,后勤:0.80,军资:0.95,联盟:0.30},
+  defender: {主帅:0.70,军师:0.95,先锋:0.75,后勤:0.85,军资:0.90,联盟:0.70},
+};
+
+function buildTraitSliders(containerId, side) {
+  const container = document.getElementById(containerId);
+  const defaults = TRAIT_DEFAULTS[side];
+  container.innerHTML = TRAIT_NAMES.map(t =>
+    `<div class="trait-row">
+      <label>${t}</label>
+      <input type="range" min="0" max="1" step="0.05" value="${defaults[t]}" id="${side}_${t}" oninput="document.getElementById('${side}_${t}_val').textContent=(parseFloat(this.value)*100).toFixed(0)">
+      <span id="${side}_${t}_val">${(defaults[t]*100).toFixed(0)}</span>
+    </div>`
+  ).join("");
+}
+buildTraitSliders("attacker_traits", "attacker");
+buildTraitSliders("defender_traits", "defender");
+
+function getTraits(side) {
+  const traits = {};
+  TRAIT_NAMES.forEach(t => {
+    traits[t] = parseFloat(document.getElementById(`${side}_${t}`).value);
+  });
+  return traits;
+}
+
+async function runBattle() {
+  const btn = document.querySelector("button");
+  const status = document.getElementById("status");
+  btn.disabled = true;
+  status.textContent = "推演中...";
+
+  const body = {
+    attacker_name: document.getElementById("attacker_name").value || "曹操",
+    defender_name: document.getElementById("defender_name").value || "孙权",
+    attacker_traits: getTraits("attacker"),
+    defender_traits: getTraits("defender"),
+    time_desc: document.getElementById("time_desc").value,
+    location: document.getElementById("location").value,
+    cast_num1: parseInt(document.getElementById("cast1").value) || 9,
+    cast_num2: parseInt(document.getElementById("cast2").value) || 6,
+    cast_num3: parseInt(document.getElementById("cast3").value) || 13,
+    seed: document.getElementById("seed").value ? parseInt(document.getElementById("seed").value) : null,
+  };
+
+  try {
+    const resp = await fetch("/api/battle/run", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    renderResult(data);
+    status.textContent = "推演完成 ✓";
+  } catch (e) {
+    status.textContent = "推演失败: " + e.message;
+  }
+  btn.disabled = false;
+}
+
+function yaoChar(isYang) { return isYang ? "⚊" : "⚋"; }
+
+function renderResult(d) {
+  const w = d.winner;
+  const winName = w === "attacker" ? d.attacker_name : (w === "defender" ? d.defender_name : "平局");
+  const winClass = w === "attacker" ? "atk" : (w === "defender" ? "def" : "");
+
+  let html = "";
+
+  // 胜负横幅
+  html += `<div class="result-banner ${winClass}">
+    🏆 ${winName} 获胜
+    <br><small style="font-weight:400;font-size:0.8rem;">
+    攻方(${d.attacker_name})伤亡 ${(d.total_casualties_attacker*100).toFixed(0)}% ·
+    守方(${d.defender_name})伤亡 ${(d.total_casualties_defender*100).toFixed(0)}%
+    </small>
+  </div>`;
+
+  // 总卦展示
+  const mh = d.main_hexagram;
+  html += `<div class="card" style="text-align:center;">
+    <strong>总卦: ${mh.name} (${mh.index}/64)</strong>
+    <div style="font-size:0.85rem;color:#888;">上${mh.upper}下${mh.lower} · ${mh.element} · ${mh.palace}宫</div>
+    <div class="hex-line">${mh.lines.map(l => yaoChar(l.is_yang)).join("<br>")}</div>
+    <div style="font-size:0.7rem;color:#888;">${mh.lines.map(l => l.position+"爻"+l.six_relation+(l.shi_ying?"["+l.shi_ying+"]":"")).join(" · ")}</div>
+    <div style="font-size:0.85rem;margin-top:0.3rem;">→ 变卦: ${d.changed_hexagram.name} (${d.changed_hexagram.index}/64)</div>
+  </div>`;
+
+  // 五阶段
+  html += `<div><h3 style="margin-bottom:0.5rem;color:var(--red);">⚡ 五阶段推演</h3>`;
+  d.stages.forEach(s => {
+    const cls = s.advantage === "attacker" ? "atk" : (s.advantage === "defender" ? "def" : "");
+    const icon = {attacker:"◉ 攻优", defender:"◎ 守优", even:"○ 均势"}[s.advantage] || "";
+    html += `<div class="stage-card ${cls}">
+      <div class="stage-header">
+        <span>${s.stage_name} <span style="font-size:0.8rem;color:#888;">${s.hex_name} 动${s.moving_line}爻</span></span>
+        <span style="font-size:0.85rem;">${icon}</span>
+      </div>
+      <div style="font-size:0.8rem;margin:0.2rem 0;">攻亡${(s.casualties_attacker*100).toFixed(0)}% · 守亡${(s.casualties_defender*100).toFixed(0)}% · 补给${s.supply_loss}损</div>
+      <div style="font-size:0.8rem;color:#666;">${s.turning_point}</div>
+      <div style="font-size:0.75rem;color:#999;">${s.yongshen_status}</div>
+    </div>`;
+  });
+  html += "</div>";
+
+  // 战报正文
+  html += `<div class="card"><h2>📜 战报全文</h2><div class="narrative">${d.narrative}</div></div>`;
+
+  document.getElementById("result-content").innerHTML = html;
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+// 加载卦象参考
+async function loadHexagrams() {
+  try {
+    const resp = await fetch("/api/hexagrams");
+    const hexes = await resp.json();
+    const grid = document.getElementById("hex-grid");
+    grid.innerHTML = hexes.map(h =>
+      `<div class="hex-cell" onclick="showHexDetail(${h.index})" title="${h.name}">${h.index}<br>${h.name}</div>`
+    ).join("");
+  } catch(e) {}
+}
+
+async function showHexDetail(index) {
+  try {
+    const resp = await fetch(`/api/hexagram/${index}`);
+    const h = await resp.json();
+    const detail = document.getElementById("hex-detail");
+    detail.style.display = "block";
+    detail.innerHTML = `
+      <strong>${h.name}</strong> (${h.index}/64)
+      · ${h.upper.name}上${h.lower.name}下
+      · ${h.palace}宫
+      · 世在${h.shi_position}爻 应在${h.ying_position}爻
+      <br>爻位: ${h.lines.map(l =>
+        l.position+"爻"+(l.is_yang?"阳":"阴")+"·"+l.element+"·"+l.six_relation+(l.shi_ying?"["+l.shi_ying+"]":"")
+      ).join(" | ")}
+    `;
+  } catch(e) {}
+}
+
+loadHexagrams();
+</script>
+</body>
+</html>

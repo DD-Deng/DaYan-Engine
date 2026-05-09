@@ -157,10 +157,10 @@ dayan_engine/
 - [x] 模板战报生成器
 - [x] 赤壁之战 demo
 - [x] pytest 测试覆盖
-- [ ] LLM agent 接入
-- [ ] Web 界面
-- [ ] 奇门遁甲模块
-- [ ] 平衡性验证脚本
+- [x] LLM agent 接入
+- [x] Web 界面
+- [x] 奇门遁甲模块
+- [x] 平衡性验证脚本
 
 ## License
 

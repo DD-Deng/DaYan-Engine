@@ -115,6 +115,10 @@ class BattleConfig:
     cast_nums: tuple[int, int, int] = (1, 2, 3)
     ally_name: str = ""
     ally_traits: dict[str, float] = field(default_factory=dict)
+    attacker_agent: object | None = None
+    defender_agent: object | None = None
+    ally_agent: object | None = None
+    agent_influences_battle: bool = False
 
 
 @dataclass
@@ -167,3 +171,4 @@ class BattleResult:
     total_casualties_attacker: float = 0.0
     total_casualties_defender: float = 0.0
     narrative: str = ""
+    agent_outputs: dict = field(default_factory=dict)
