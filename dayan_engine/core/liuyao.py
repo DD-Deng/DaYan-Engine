@@ -415,19 +415,19 @@ def judge_casualties(hexagram: Hexagram, yongshen_score: float) -> tuple[float, 
 
         # 子孙受克 → 攻方伤亡高
         if total_penalty > 0:
-            base_attacker = 0.3 + 0.1 * total_penalty
+            base_attacker = 0.25 + 0.07 * total_penalty
             base_defender = 0.15
         else:
-            base_attacker = 0.2
-            base_defender = 0.3 - 0.05 * total_penalty
+            base_attacker = 0.15
+            base_defender = 0.25 - 0.05 * total_penalty
 
     # 用神分数影响
     base_attacker *= (1.2 - yongshen_score)
     base_defender *= yongshen_score
 
     return (
-        max(0.05, min(0.8, base_attacker)),
-        max(0.05, min(0.8, base_defender)),
+        max(0.10, min(0.45, base_attacker)),
+        max(0.10, min(0.50, base_defender)),
     )
 
 
